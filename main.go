@@ -107,7 +107,6 @@ func findPointParallel(ctx context.Context, workers int, p0 *edwards25519.Point,
 			defer wg.Done()
 
 			skip := randUint64()
-			// p, n := findPoint(gctx, p0, skip, test)
 			p, n := findBatchPoint(gctx, p0, skip, 1024, test)
 
 			attempts.Add(n - skip)
@@ -125,26 +124,6 @@ func findPointParallel(ctx context.Context, workers int, p0 *edwards25519.Point,
 	case <-ctx.Done():
 		return nil, 0, attempts.Load()
 	}
-}
-
-func findPoint(ctx context.Context, p0 *edwards25519.Point, skip uint64, test func([]byte) bool) (*edwards25519.Point, uint64) {
-	skipOffset := new(edwards25519.Point).ScalarMult(scalarFromUint64(skip), pointOffset)
-	p := new(edwards25519.Point).Add(p0, skipOffset)
-	n := skip
-
-	var bm [32]byte
-	bytesMontgomery(p, &bm)
-
-	for ; !test(bm[:]); n++ {
-		select {
-		case <-ctx.Done():
-			return nil, n
-		default:
-			p.Add(p, pointOffset)
-			bytesMontgomery(p, &bm)
-		}
-	}
-	return p, n
 }
 
 func findBatchPoint(ctx context.Context, p0 *edwards25519.Point, skip uint64, batchSize int, test func([]byte) bool) (*edwards25519.Point, uint64) {
@@ -318,37 +297,6 @@ func randUint64() uint64 {
 	return num
 }
 
-// bytesMontgomery is a copy of [edwards25519.Point.BytesMontgomery]
-// to eliminate allocations.
-//
-// bytesMontgomery uses:
-//
-//	1 addition
-//	1 subtraction
-//	1 invert = 254 squaring + 11 multiplications
-//	1 multiplication
-//
-// i.e. ~254+11+1 = 266 multiplications
-func bytesMontgomery(v *edwards25519.Point, buf *[32]byte) {
-	// RFC 7748, Section 4.1 provides the bilinear map to calculate the
-	// Montgomery u-coordinate
-	//
-	//              u = (1 + y) / (1 - y)
-	//
-	// where y = Y / Z and therefore
-	//
-	//              u = (Z + Y) / (Z - Y)
-
-	var n, r, u field.Element
-
-	_, Y, Z, _ := v.ExtendedCoordinates()
-	n.Add(Z, Y)                // n = Z + Y
-	r.Invert(r.Subtract(Z, Y)) // r = 1 / (Z - Y)
-	u.Multiply(&n, &r)         // u = n * r
-
-	copy(buf[:], u.Bytes())
-}
-
 // batchBytesMontgomery is equivalent to calling [edwards25519.Point.BytesMontgomery] for each point
 // except that it uses [vectorDivision] and thus uses less point multiplications.
 //
@@ -363,10 +311,13 @@ func bytesMontgomery(v *edwards25519.Point, buf *[32]byte) {
 //
 // i.e. ~4*n multiplications for large n.
 func batchBytesMontgomery(pts []edwards25519.Point, u []field.Element, scratch [][]field.Element) {
+	// RFC 7748, Section 4.1 provides the bilinear map to calculate the
+	// Montgomery u-coordinate
+	//
+	// u = (Z + Y) / (Z - Y) = x / y
 	x := scratch[0]
 	y := scratch[1]
 
-	// u = (Z + Y) / (Z - Y) = x / y
 	for i, v := range pts {
 		_, Y, Z, _ := v.ExtendedCoordinates()
 		x[i].Add(Z, Y)      // x = Z + Y

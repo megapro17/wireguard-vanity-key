@@ -32,18 +32,6 @@ func BenchmarkNewPrivateKey(b *testing.B) {
 
 var testPrefix = testBase64Prefix("GoodLuckWithThisPrefix")
 
-func BenchmarkFindPoint(b *testing.B) {
-	_, p0 := newPair()
-
-	i := b.N
-
-	findPoint(context.Background(), p0, randUint64(), func(p []byte) bool {
-		match := testPrefix(p)
-		i--
-		return i == 0 || match
-	})
-}
-
 func BenchmarkFindBatchPoint(b *testing.B) {
 	for _, batchSize := range []int{
 		1, 32, 64, 128, 256, 512, 1024,
