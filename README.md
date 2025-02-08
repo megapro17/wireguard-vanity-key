@@ -9,27 +9,27 @@ with a base64-encoded public key that has a specified prefix.
 Install the tool locally and run:
 ```console
 $ go install github.com/AlexanderYastrebov/wireguard-vanity-key@latest
-$ wireguard-vanity-key --prefix=2025
+$ wireguard-vanity-key -prefix=2025
 private                                      public                                       attempts   duration   attempts/s
-4JFWFevraBg5yLD2rCFzGMpbKZOC3BV5rNom+Um7EGg= 2025Q6KcDb+v/nj2/ErYNThiApp8jTgeHzDzIbB5DCI= 3675109    0s         9209444
+WHakaGFouuy2AxMmOdSTf2L2KWsI6a3s+gvAOKuKtH0= 2025sb38RUVI+GJg5Uk2RRPuJfhZyg4uSxfV2WDn1g8= 47423039   2s         19926032
 
 $ # verify
-$ echo 4JFWFevraBg5yLD2rCFzGMpbKZOC3BV5rNom+Um7EGg= | wg pubkey 
-2025Q6KcDb+v/nj2/ErYNThiApp8jTgeHzDzIbB5DCI=
+$ echo WHakaGFouuy2AxMmOdSTf2L2KWsI6a3s+gvAOKuKtH0= | wg pubkey
+2025sb38RUVI+GJg5Uk2RRPuJfhZyg4uSxfV2WDn1g8=
 ```
 
 or run the tool from the source repository:
 ```console
-$ go run . --prefix=2025
+$ go run . -prefix=2025
 ```
 
 or use Docker image:
 ```console
 $ docker pull ghcr.io/alexanderyastrebov/wireguard-vanity-key:latest
-$ docker run ghcr.io/alexanderyastrebov/wireguard-vanity-key:latest --prefix=2025
+$ docker run  ghcr.io/alexanderyastrebov/wireguard-vanity-key:latest -prefix=2025
 ```
 
-## Benchmark
+## Performance
 
 The tool checks ~18'000'000 keys per second on a test machine:
 
