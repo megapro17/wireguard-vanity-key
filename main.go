@@ -77,7 +77,7 @@ func main() {
 
 	test := testBase64Prefix(config.prefix)
 
-	n, attempts, ok := findPointParallel(ctx, runtime.NumCPU(), p0, test)
+	n, attempts, ok := findPointParallel(ctx, runtime.NumCPU(), p0, test, 0)
 
 	private := "-"
 	public := config.prefix + "..."
@@ -216,7 +216,7 @@ func parsePublicKey(pk string) (*edwards25519.Point, error) {
 	return new(edwards25519.Point).SetBytes(y.Bytes())
 }
 
-func findPointParallel(ctx context.Context, workers int, p0 *edwards25519.Point, test func([]byte) bool) (uint64, uint64, bool) {
+func findPointParallel(ctx context.Context, workers int, p0 *edwards25519.Point, test func([]byte) bool, limit uint64) (uint64, uint64, bool) {
 	result := make(chan uint64, workers)
 	var attempts atomic.Uint64
 
@@ -230,7 +230,7 @@ func findPointParallel(ctx context.Context, workers int, p0 *edwards25519.Point,
 			defer wg.Done()
 
 			skip := randUint64()
-			n, ok := findBatchPoint(gctx, p0, skip, 1024, test)
+			n, ok := findBatchPoint(gctx, p0, skip, 1024, test, limit/uint64(workers))
 
 			attempts.Add(n - skip)
 			if ok {
@@ -249,7 +249,7 @@ func findPointParallel(ctx context.Context, workers int, p0 *edwards25519.Point,
 	}
 }
 
-func findBatchPoint(ctx context.Context, p0 *edwards25519.Point, skip uint64, batchSize int, test func([]byte) bool) (uint64, bool) {
+func findBatchPoint(ctx context.Context, p0 *edwards25519.Point, skip uint64, batchSize int, test func([]byte) bool, limit uint64) (uint64, bool) {
 	skipOffset := new(edwards25519.Point).ScalarMult(scalarFromUint64(skip), pointOffset)
 	p := new(edwards25519.Point).Add(p0, skipOffset)
 
@@ -297,6 +297,14 @@ func findBatchPoint(ctx context.Context, p0 *edwards25519.Point, skip uint64, ba
 
 		n += uint64(batchSize)
 		pa.fromP1xP1(new(projP1xP1).addAffine(pa, batchOffset))
+
+		if limit > 0 {
+			if limit <= uint64(batchSize) {
+				// TODO: should signal finish somehow else
+				return n, true
+			}
+			limit -= uint64(batchSize)
+		}
 	}
 }
 

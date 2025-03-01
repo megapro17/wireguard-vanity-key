@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"runtime"
-	"sync/atomic"
 	"testing"
 
 	"filippo.io/edwards25519"
@@ -40,17 +39,11 @@ func BenchmarkFindBatchPoint(b *testing.B) {
 		b.Run(fmt.Sprintf("%d", batchSize), func(b *testing.B) {
 			_, p0 := newPair()
 
-			i := b.N
-
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
 			b.ResetTimer()
-			findBatchPoint(ctx, p0, randUint64(), batchSize, func(p []byte) bool {
-				match := testPrefix(p)
-				i--
-				return i == 0 || match
-			})
+			findBatchPoint(ctx, p0, randUint64(), batchSize, testPrefix, uint64(b.N))
 		})
 	}
 }
@@ -58,13 +51,8 @@ func BenchmarkFindBatchPoint(b *testing.B) {
 func BenchmarkFindPointParallel(b *testing.B) {
 	_, p0 := newPair()
 
-	var i atomic.Int64
-	i.Store(int64(b.N))
-
-	findPointParallel(context.Background(), runtime.NumCPU(), p0, func(p []byte) bool {
-		match := testPrefix(p)
-		return i.Add(-1) <= 0 || match
-	})
+	b.ResetTimer()
+	findPointParallel(context.Background(), min(runtime.NumCPU(), b.N), p0, testPrefix, uint64(b.N))
 }
 
 func TestBatchBytesMontgomery(t *testing.T) {
