@@ -14,14 +14,26 @@ import (
 	"filippo.io/edwards25519"
 )
 
+func assertEqual(tb testing.TB, expected, got any) {
+	tb.Helper()
+	if !reflect.DeepEqual(expected, got) {
+		tb.Errorf("%v != %v", expected, got)
+	}
+}
+
+func requireEqual(tb testing.TB, expected, got any) {
+	tb.Helper()
+	if !reflect.DeepEqual(expected, got) {
+		tb.Fatalf("%v != %v", expected, got)
+	}
+}
+
 func BenchmarkNewPrivateKey(b *testing.B) {
 	var key [32]byte
 	_, err := io.ReadFull(rand.Reader, key[:])
-	if err != nil {
-		b.Fatal(err)
-	}
-	b.ResetTimer()
+	requireEqual(b, nil, err)
 
+	b.ResetTimer()
 	for range b.N {
 		priv, _ := ecdh.X25519().NewPrivateKey(key[:])
 		_ = priv.PublicKey().Bytes()
@@ -69,38 +81,31 @@ func TestTestBase64Prefix(t *testing.T) {
 		})
 	}
 
-	assertEqual := func(a, b bool) {
-		t.Helper()
-		if a != b {
-			t.Error("<-- see")
-		}
-	}
-
 	// Single symbol is a 6-bit prefix
-	assertEqual(true, testBase64Prefix("A")([]byte{0}))
-	assertEqual(true, testBase64Prefix("A")([]byte{0b000000_01}))
-	assertEqual(true, testBase64Prefix("A")([]byte{0b000000_10}))
-	assertEqual(true, testBase64Prefix("A")([]byte{0b000000_11}))
-	assertEqual(false, testBase64Prefix("A")([]byte{0b000001_00}))
+	assertEqual(t, true, testBase64Prefix("A")([]byte{0}))
+	assertEqual(t, true, testBase64Prefix("A")([]byte{0b000000_01}))
+	assertEqual(t, true, testBase64Prefix("A")([]byte{0b000000_10}))
+	assertEqual(t, true, testBase64Prefix("A")([]byte{0b000000_11}))
+	assertEqual(t, false, testBase64Prefix("A")([]byte{0b000001_00}))
 
-	assertEqual(true, testBase64Prefix("B")([]byte{0b000001_00}))
-	assertEqual(true, testBase64Prefix("B")([]byte{0b000001_01}))
-	assertEqual(true, testBase64Prefix("B")([]byte{0b000001_10}))
-	assertEqual(true, testBase64Prefix("B")([]byte{0b000001_11}))
-	assertEqual(false, testBase64Prefix("B")([]byte{0}))
-	assertEqual(false, testBase64Prefix("B")([]byte{1}))
+	assertEqual(t, true, testBase64Prefix("B")([]byte{0b000001_00}))
+	assertEqual(t, true, testBase64Prefix("B")([]byte{0b000001_01}))
+	assertEqual(t, true, testBase64Prefix("B")([]byte{0b000001_10}))
+	assertEqual(t, true, testBase64Prefix("B")([]byte{0b000001_11}))
+	assertEqual(t, false, testBase64Prefix("B")([]byte{0}))
+	assertEqual(t, false, testBase64Prefix("B")([]byte{1}))
 
 	// Two symbols is a 12-bit prefix
-	assertEqual(true, testBase64Prefix("AA")([]byte{0, 0}))
-	assertEqual(true, testBase64Prefix("AA")([]byte{0, 0b0000_0001}))
-	assertEqual(true, testBase64Prefix("AB")([]byte{0b000000_00, 0b0001_0000}))
-	assertEqual(true, testBase64Prefix("AB")([]byte{0b000000_00, 0b0001_0001}))
-	assertEqual(true, testBase64Prefix("AB")([]byte{0b000000_00, 0b0001_0010}))
-	assertEqual(true, testBase64Prefix("BB")([]byte{0b000001_00, 0b0001_0000}))
-	assertEqual(false, testBase64Prefix("BB")([]byte{0b000001_01, 0b0001_0000}))
+	assertEqual(t, true, testBase64Prefix("AA")([]byte{0, 0}))
+	assertEqual(t, true, testBase64Prefix("AA")([]byte{0, 0b0000_0001}))
+	assertEqual(t, true, testBase64Prefix("AB")([]byte{0b000000_00, 0b0001_0000}))
+	assertEqual(t, true, testBase64Prefix("AB")([]byte{0b000000_00, 0b0001_0001}))
+	assertEqual(t, true, testBase64Prefix("AB")([]byte{0b000000_00, 0b0001_0010}))
+	assertEqual(t, true, testBase64Prefix("BB")([]byte{0b000001_00, 0b0001_0000}))
+	assertEqual(t, false, testBase64Prefix("BB")([]byte{0b000001_01, 0b0001_0000}))
 
-	assertEqual(true, testBase64Prefix("AAA")([]byte{0, 0, 0}))
-	assertEqual(true, testBase64Prefix("AAA")([]byte{0, 0, 0b00_000001}))
+	assertEqual(t, true, testBase64Prefix("AAA")([]byte{0, 0, 0}))
+	assertEqual(t, true, testBase64Prefix("AAA")([]byte{0, 0, 0b00_000001}))
 }
 
 func TestParsePublicKey(t *testing.T) {
@@ -113,36 +118,23 @@ func TestParsePublicKey(t *testing.T) {
 	} {
 		t.Run(pk, func(t *testing.T) {
 			p, err := parsePublicKey(pk)
-			if err != nil {
-				t.Fatal(err)
-			}
+			requireEqual(t, nil, err)
 
-			if got := base64.StdEncoding.EncodeToString(p.BytesMontgomery()); got != pk {
-				t.Errorf("pk: %s, got: %s", pk, got)
-			}
+			assertEqual(t, pk, base64.StdEncoding.EncodeToString(p.BytesMontgomery()))
 		})
 	}
 }
 
 func TestFindBatchPoint(t *testing.T) {
-	assertEqual := func(a, b any) {
-		t.Helper()
-		if !reflect.DeepEqual(a, b) {
-			t.Error("<-- see")
-		}
-	}
-
 	p0, err := parsePublicKey("qkHBetbXfAxsmr0jH6Zs6Dx1ZEReO9WBZCoNREce0gE=")
-	if err != nil {
-		t.Fatal(err)
-	}
+	requireEqual(t, nil, err)
 
 	const expectedOffset uint64 = 92950
 
 	offset, ok := findBatchPoint(context.Background(), p0, 0, 1024, testBase64Prefix("AY/"), 0)
-	assertEqual(true, ok)
-	assertEqual(expectedOffset, offset)
+	assertEqual(t, true, ok)
+	assertEqual(t, expectedOffset, offset)
 
 	p := new(edwards25519.Point).Add(p0, new(edwards25519.Point).ScalarMult(scalarFromUint64(offset), pointOffset))
-	assertEqual("AY/yq7zukqRmMUzqqPFmtqXJdAcbmh8mn4rMgtjVnGI=", base64.StdEncoding.EncodeToString(p.BytesMontgomery()))
+	assertEqual(t, "AY/yq7zukqRmMUzqqPFmtqXJdAcbmh8mn4rMgtjVnGI=", base64.StdEncoding.EncodeToString(p.BytesMontgomery()))
 }
