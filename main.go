@@ -278,11 +278,6 @@ func findBatchPoint(ctx context.Context, p0 *edwards25519.Point, skip uint64, ba
 	ua := make([]field.Element, batchSize+2)
 	ub := make([]field.Element, batchSize+2)
 	u := make([]field.Element, batchSize+2)
-	scratch := make([][]field.Element, 2)
-
-	for i := range scratch {
-		scratch[i] = make([]field.Element, batchSize+2)
-	}
 
 	// offsets[i] = (i+1) * pointOffset
 	offsets := make([]affine, batchSize/2)
@@ -371,7 +366,7 @@ func findBatchPoint(ctx context.Context, p0 *edwards25519.Point, skip uint64, ba
 		pZinv := &u[batchSize+1]
 
 		// Complexity: 262M + 4M*(batchSize+2) = 4M*batchSize + 270M
-		vectorDivision(ua, ub, u, scratch)
+		vectorDivision(ua, ub, u)
 
 		for i := range batchSize + 1 {
 			copy(bm[:], u[i].Bytes()) // eliminate field.Element.Bytes() allocations
@@ -488,9 +483,9 @@ func randUint64() uint64 {
 	return num
 }
 
-// vectorDivision calculates u = x / y using scratch.
+// vectorDivision calculates u = x / y
 //
-// vectorDivision uses:
+// It uses:
 //
 //	4*(n-1)+1 multiplications
 //	1 invert = ~265 multiplications
@@ -500,25 +495,21 @@ func randUint64() uint64 {
 // Simultaneous field divisions: an extension of Montgomery's trick
 // David G. Harris
 // https://eprint.iacr.org/2008/199.pdf
-func vectorDivision(x, y, u []field.Element, scratch [][]field.Element) {
+func vectorDivision(x, y, u []field.Element) {
 	n := len(x)
-	r := scratch[0]
-	s := scratch[1]
-
-	r[0] = y[0]
+	py := new(field.Element).Set(&y[0]) // y[0]*y[1]*...*y[n]
 	for i := 1; i < n; i++ {
-		r[i].Multiply(&r[i-1], &y[i])
-		s[i].Multiply(&r[i-1], &x[i])
+		u[i].Multiply(py, &x[i])
+		py.Multiply(py, &y[i])
 	}
 
-	I := new(field.Element).Invert(&r[n-1])
+	pyInv := new(field.Element).Invert(py)
 
-	t := I
 	for i := n - 1; i > 0; i-- {
-		u[i].Multiply(t, &s[i])
-		t.Multiply(t, &y[i])
+		u[i].Multiply(pyInv, &u[i])
+		pyInv.Multiply(pyInv, &y[i])
 	}
-	u[0].Multiply(t, &x[0])
+	u[0].Multiply(pyInv, &x[0])
 }
 
 type affine struct {
