@@ -298,7 +298,9 @@ func findBatchPoint(ctx context.Context, p0 *edwards25519.Point, skip uint64, ba
 	// Center point for the current batch
 	pa := new(affine).fromP3(p)
 
+	var num, den, x1y2, y1x2 field.Element
 	var bm [32]byte
+
 	// One iteration tests batchSize+1 points of the
 	// batch = {p − batchSize/2*pointOffset, ... , p − pointOffset, p, p + pointOffset, ... , p + batchSize/2*pointOffset}
 	//
@@ -316,7 +318,7 @@ func findBatchPoint(ctx context.Context, p0 *edwards25519.Point, skip uint64, ba
 		// Affine addition formulae (independent of d) for twisted Edwards curves,
 		// see https://eprint.iacr.org/2008/522.pdf
 		//
-		// y3 = (x1*y1 − x2*y2) / (x1*y2 − y1*x2) = nom / den
+		// y3 = (x1*y1 − x2*y2) / (x1*y2 − y1*x2) = num / den
 		//
 		// Symmetric negative point p2' = −p2 has y2' = y2 and x2' = −x2, therefore
 		//
@@ -325,32 +327,30 @@ func findBatchPoint(ctx context.Context, p0 *edwards25519.Point, skip uint64, ba
 		// The u-coordinate on a Montgomery curve,
 		// see https://www.rfc-editor.org/rfc/rfc7748.html#section-4.1
 		//
-		// u = (1 + y) / (1 − y) = (1 + nom/den) / (1 − nom/den) = (den + nom) / (den − nom) = ua / ub
+		// u = (1 + y) / (1 − y) = (1 + num/den) / (1 − num/den) = (den + num) / (den − num) = ua / ub
 		//
 		// Complexity: (2M + 8A)*batchSize/2 + 2A = (1M + 4A)*batchSize + 2A
 		for i := range batchSize / 2 {
 			p1, p2 := pa, &offsets[i]
 
-			var nom, den, x1y2, y1x2 field.Element
-
 			x1y2.Multiply(&p1.X, &p2.Y)
 			y1x2.Multiply(&p1.Y, &p2.X)
 
 			// p3 = p1 + p2
-			// y3 = (x1*y1 − x2*y2) / (x1*y2 − y1*x2) = nom / den
-			// u = (den + nom) / (den − nom)
-			nom.Subtract(&p1.XY, &p2.XY)
+			// y3 = (x1*y1 − x2*y2) / (x1*y2 − y1*x2) = num / den
+			// u = (den + num) / (den − num)
+			num.Subtract(&p1.XY, &p2.XY)
 			den.Subtract(&x1y2, &y1x2)
-			ua[batchSize/2+1+i].Add(&den, &nom)
-			ub[batchSize/2+1+i].Subtract(&den, &nom)
+			ua[batchSize/2+1+i].Add(&den, &num)
+			ub[batchSize/2+1+i].Subtract(&den, &num)
 
 			// p3' = p1 − p2
-			// y3' = (x1*y1 + x2*y2) / (x1*y2 + y1*x2) = nom / den
-			// u' = (den + nom) / (den − nom)
-			nom.Add(&p1.XY, &p2.XY)
+			// y3' = (x1*y1 + x2*y2) / (x1*y2 + y1*x2) = num / den
+			// u' = (den + num) / (den − num)
+			num.Add(&p1.XY, &p2.XY)
 			den.Add(&x1y2, &y1x2)
-			ua[batchSize/2-1-i].Add(&den, &nom)
-			ub[batchSize/2-1-i].Subtract(&den, &nom)
+			ua[batchSize/2-1-i].Add(&den, &num)
+			ub[batchSize/2-1-i].Subtract(&den, &num)
 		}
 		// pa is the center point of the batch
 		ua[batchSize/2].Add(new(field.Element).One(), &pa.Y)
