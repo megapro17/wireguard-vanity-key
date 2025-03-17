@@ -380,11 +380,11 @@ func findBatchPoint(ctx context.Context, p0 *edwards25519.Point, skip uint64, ba
 		pa.fromP3zInv(p, pZinv)
 
 		if limit > 0 {
-			if limit <= uint64(batchSize) {
+			if limit <= uint64(batchSize+1) {
 				// TODO: should signal finish somehow else
 				return n, true
 			}
-			limit -= uint64(batchSize)
+			limit -= uint64(batchSize + 1)
 		}
 	}
 }
