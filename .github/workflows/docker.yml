@@ -29,6 +29,6 @@ jobs:
         with:
           context: .
           push: true
+          platforms: linux/amd64,linux/arm64
           build-args: REVISION=${{ env.REVISION }}
-          tags: |
-            ghcr.io/alexanderyastrebov/wireguard-vanity-key:latest
+          tags: ghcr.io/alexanderyastrebov/wireguard-vanity-key:latest
