@@ -22,9 +22,13 @@ jobs:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set revision
+        run: echo "REVISION=$(git rev-parse HEAD)" >> $GITHUB_ENV
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
+          context: .
           push: true
+          build-args: REVISION=${{ env.REVISION }}
           tags: |
             ghcr.io/alexanderyastrebov/wireguard-vanity-key:latest

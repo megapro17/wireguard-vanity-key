@@ -1,5 +1,5 @@
 module github.com/AlexanderYastrebov/wireguard-vanity-key
 
-go 1.23.2
+go 1.24.0
 
-require filippo.io/edwards25519 v1.1.1-0.20250207174519-4c39688abc49
+require filippo.io/edwards25519 v1.1.1-0.20250211130249-04b037b40df0
