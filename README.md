@@ -81,7 +81,7 @@ multiply the base point by a random candidate private key and check the resultin
 ```
 public_key = private_key × base_point
 ```
-For the WireGuard key format, this basic algorithm requires **477** field multiplications per candidate key.
+For the WireGuard key format, this basic algorithm requires **2561** field multiplications (using [square-and-multiply](https://github.com/golang/go/commit/e005cdc62081130117a3fa30d01cd28ee076ed93)) or **743** field multiplications (using [Twisted Edwards curve](https://github.com/FiloSottile/edwards25519/commit/2941d4c8cdacb392a1b39f85adafaeae65bb50f6)) per candidate key.
 
 This tool uses only **5 (five)** field multiplications per candidate key and other optimizations, which makes it the fastest 🚀
 
