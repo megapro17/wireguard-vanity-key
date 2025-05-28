@@ -97,7 +97,7 @@ public_key1 = (private_key0 + const_offset) × base_point
             = public_key0 + const_point_offset
 ```
 i.e., the candidate public key is obtained by point addition instead of base point multiplication,
-which requires fewer field multiplications (275 vs. 477 or ~40% faster).
+which requires fewer field multiplications (275 vs. 743 or ~60% faster).
 See [initial commit](https://github.com/AlexanderYastrebov/wireguard-vanity-key/commit/8c25defadec12585a80245faa40ddda2c192d423).
 
 ### 🧮 Batch field inversion
