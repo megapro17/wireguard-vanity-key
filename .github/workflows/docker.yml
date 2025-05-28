@@ -24,14 +24,11 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      - name: Set revision
+        run: echo "REVISION=$(git rev-parse HEAD)" >> $GITHUB_ENV
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
-      - name: Set revision
-        run: echo "REVISION=$(git rev-parse HEAD)" >> $GITHUB_ENV
 
       - name: Build and push
         uses: docker/build-push-action@v6
