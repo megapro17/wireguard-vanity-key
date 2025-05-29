@@ -11,7 +11,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"math/big"
 	"os"
 	"os/signal"
 	"runtime"
@@ -446,31 +445,13 @@ func testBase64Prefix(prefix string) func([]byte) bool {
 // decodeBase64PrefixBits returns decoded prefix and number of decoded bits.
 func decodeBase64PrefixBits(prefix string) ([]byte, int) {
 	decodedBits := 6 * len(prefix)
-	tailBits := decodedBits % 8
-
-	// Parse prefix as base64 number
-	decodedInt := big.NewInt(0)
-	_64 := big.NewInt(64)
-	const stdEncoding = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-	for i := 0; i < len(prefix); i++ {
-		if digit := strings.IndexByte(stdEncoding, prefix[i]); digit >= 0 {
-			decodedInt.Mul(decodedInt, _64)
-			decodedInt.Add(decodedInt, big.NewInt(int64(digit)))
-		} else if prefix[i] == '=' {
-			// skip
-		} else {
-			panic("invalid base64 byte: " + prefix[i:i+1])
-		}
+	quantums := (len(prefix) + 3) / 4
+	prefix += strings.Repeat("A", quantums*4-len(prefix))
+	buf := make([]byte, quantums*3)
+	_, err := base64.StdEncoding.Decode(buf, []byte(prefix))
+	if err != nil {
+		panic(err)
 	}
-	if tailBits != 0 {
-		decodedInt.Mul(decodedInt, big.NewInt(1<<(8-tailBits)))
-	}
-	decoded := decodedInt.Bytes()
-
-	// left pad decoded prefix with zeros
-	buf := make([]byte, (decodedBits+7)/8)
-	copy(buf[len(buf)-len(decoded):], decoded)
-
 	return buf, decodedBits
 }
 
