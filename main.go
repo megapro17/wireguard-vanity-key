@@ -151,18 +151,11 @@ func searchParallel(ctx context.Context, workers int, startPublicKey []byte, tes
 	var wg sync.WaitGroup
 	for range workers {
 		wg.Go(func() {
-			var attempts uint64
-			testAttempts := func(b []byte) bool {
-				attempts++
-				return test(b)
-			}
-
-			vanity25519.Search(gtx, startPublicKey, randBigInt(), 4096, testAttempts, func(publicKey []byte, offset *big.Int) {
+			attempts := vanity25519.Search(gtx, startPublicKey, randBigInt(), 4096, test, func(publicKey []byte, offset *big.Int) {
 				if found.CompareAndSwap(nil, &result{publicKey, offset}) {
 					cancel()
 				}
 			})
-
 			totalAttempts.Add(attempts)
 		})
 	}
