@@ -142,7 +142,7 @@ func searchParallel(ctx context.Context, workers int, startPublicKey []byte, tes
 		publicKey []byte
 		offset    *big.Int
 	}
-	found := make(chan result, workers)
+	var found atomic.Pointer[result]
 	var totalAttempts atomic.Uint64
 
 	gtx, cancel := context.WithCancel(ctx)
@@ -158,8 +158,9 @@ func searchParallel(ctx context.Context, workers int, startPublicKey []byte, tes
 			}
 
 			vanity25519.Search(gtx, startPublicKey, randBigInt(), 4096, testAttempts, func(publicKey []byte, offset *big.Int) {
-				found <- result{publicKey, offset}
-				cancel()
+				if found.CompareAndSwap(nil, &result{publicKey, offset}) {
+					cancel()
+				}
 			})
 
 			totalAttempts.Add(attempts)
@@ -167,12 +168,10 @@ func searchParallel(ctx context.Context, workers int, startPublicKey []byte, tes
 	}
 	wg.Wait()
 
-	select {
-	case r := <-found:
+	if r := found.Load(); r != nil {
 		return r.publicKey, r.offset, totalAttempts.Load(), true
-	case <-ctx.Done():
-		return nil, big.NewInt(0), totalAttempts.Load(), false
 	}
+	return nil, big.NewInt(0), totalAttempts.Load(), false
 }
 
 // decodeBase64PrefixBits returns decoded prefix and number of decoded bits.
