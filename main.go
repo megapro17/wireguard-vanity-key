@@ -73,7 +73,7 @@ func main() {
 
 	test := vanity25519.HasPrefixBits(decodeBase64PrefixBits(config.prefix))
 
-	vanityPublicKey, offset, attempts, ok := searchParallel(ctx, runtime.NumCPU(), startPublicKey, test)
+	vanityPublicKey, offset, attempts, ok := searchParallel(ctx, runtime.GOMAXPROCS(0), startPublicKey, test)
 
 	private := "-"
 	public := config.prefix + "..."
