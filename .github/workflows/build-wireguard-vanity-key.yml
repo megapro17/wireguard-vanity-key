@@ -33,25 +33,42 @@ jobs:
         with:
           go-version: ${{ inputs.go-version }}
 
-      - name: Build via go install (no local go required)
+      - name: Build via git clone + go build (recommended for cross builds)
         env:
           GOOS: ${{ inputs.target-os }}
           GOARCH: ${{ inputs.target-arch }}
           CGO_ENABLED: 0
-          # Установим GOBIN в workspace, чтобы бинарь оказался в известном месте
-          GOBIN: ${{ github.workspace }}/bin
         run: |
           set -e
-          mkdir -p "$GOBIN"
-          VER="${{ inputs.version }}"
-          if [ "$VER" = "latest" ] || [ -z "$VER" ]; then
-            # install latest from default branch
-            go install github.com/AlexanderYastrebov/wireguard-vanity-key@latest
-          else
-            go install "github.com/AlexanderYastrebov/wireguard-vanity-key@${VER}"
+          WORK=/tmp/wgvk-src
+          rm -rf "$WORK"
+          git clone --depth 1 https://github.com/AlexanderYastrebov/wireguard-vanity-key.git "$WORK"
+          if [ "${{ inputs.version }}" != "latest" ] && [ -n "${{ inputs.version }}" ]; then
+            cd "$WORK"
+            git fetch --depth=1 origin "${{ inputs.version }}" || true
+            git checkout "${{ inputs.version }}" || git checkout "tags/${{ inputs.version }}" || true
           fi
-          echo "Installed to: $GOBIN"
-          ls -la "$GOBIN"
+          cd "$WORK"
+          OUT="$GITHUB_WORKSPACE/${{ inputs.output-name }}"
+          # имя бинаря внутри модуля
+          BIN_NAME="wireguard-vanity-key"
+          if [ "${{ inputs.target-os }}" = "windows" ]; then BIN_NAME="${BIN_NAME}.exe"; fi
+          go build -trimpath -o "$OUT" ./...
+          # если build ./... не положил бинарь, попробуем явно build main
+          if [ ! -f "$OUT" ]; then
+            # попытаемся найти пакет main и собрать его
+            mapfile -t mains < <(go list -f '{{if eq .Name "main"}}{{.Dir}}{{end}}' ./... | sed '/^$/d')
+            for d in "${mains[@]}"; do
+              go build -trimpath -o "$OUT" "$d" || true
+              if [ -f "$OUT" ]; then break; fi
+            done
+          fi
+          if [ ! -f "$OUT" ]; then
+            echo "Build failed: no output binary found."
+            ls -la
+            exit 1
+          fi
+          ls -la "$OUT"
 
       - name: Prepare artifact
         run: |
