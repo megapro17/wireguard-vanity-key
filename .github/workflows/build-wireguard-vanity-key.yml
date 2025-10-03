@@ -1,16 +1,16 @@
-name: Build wireguard-vanity-key (manual, simple)
+name: Build wireguard-vanity-key
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Tag/branch/commit (use "latest" for default branch)'
+        description: 'Tag/branch/commit (или latest)'
         required: false
         default: 'latest'
       go-version:
-        description: 'Go version (>=1.16 for go install pkg@version)'
+        description: 'Go version (>=1.25 для этой программы)'
         required: false
-        default: '1.21'
+        default: '1.25.1'
       target-os:
         description: 'Target OS (windows/linux/darwin)'
         required: false
@@ -20,7 +20,7 @@ on:
         required: false
         default: 'amd64'
       output-name:
-        description: 'Артефакт/имя файла'
+        description: 'Имя файла артефакта'
         required: false
         default: 'wireguard-vanity-key.exe'
 
@@ -33,55 +33,27 @@ jobs:
         with:
           go-version: ${{ inputs.go-version }}
 
-      - name: Build via git clone + go build (recommended for cross builds)
+      - name: Clone repo
+        run: |
+          git clone --depth 1 https://github.com/AlexanderYastrebov/wireguard-vanity-key.git src
+          cd src
+          if [ "${{ inputs.version }}" != "latest" ]; then
+            git fetch --depth=1 origin "${{ inputs.version }}" || true
+            git checkout "${{ inputs.version }}" || git checkout "tags/${{ inputs.version }}" || true
+          fi
+
+      - name: Build
+        working-directory: src
         env:
           GOOS: ${{ inputs.target-os }}
           GOARCH: ${{ inputs.target-arch }}
           CGO_ENABLED: 0
         run: |
-          set -e
-          WORK=/tmp/wgvk-src
-          rm -rf "$WORK"
-          git clone --depth 1 https://github.com/AlexanderYastrebov/wireguard-vanity-key.git "$WORK"
-          if [ "${{ inputs.version }}" != "latest" ] && [ -n "${{ inputs.version }}" ]; then
-            cd "$WORK"
-            git fetch --depth=1 origin "${{ inputs.version }}" || true
-            git checkout "${{ inputs.version }}" || git checkout "tags/${{ inputs.version }}" || true
-          fi
-          cd "$WORK"
           OUT="$GITHUB_WORKSPACE/${{ inputs.output-name }}"
-          # имя бинаря внутри модуля
-          BIN_NAME="wireguard-vanity-key"
-          if [ "${{ inputs.target-os }}" = "windows" ]; then BIN_NAME="${BIN_NAME}.exe"; fi
-          go build -trimpath -o "$OUT" ./...
-          # если build ./... не положил бинарь, попробуем явно build main
-          if [ ! -f "$OUT" ]; then
-            # попытаемся найти пакет main и собрать его
-            mapfile -t mains < <(go list -f '{{if eq .Name "main"}}{{.Dir}}{{end}}' ./... | sed '/^$/d')
-            for d in "${mains[@]}"; do
-              go build -trimpath -o "$OUT" "$d" || true
-              if [ -f "$OUT" ]; then break; fi
-            done
-          fi
-          if [ ! -f "$OUT" ]; then
-            echo "Build failed: no output binary found."
-            ls -la
-            exit 1
-          fi
+          go build -trimpath -o "$OUT" .
           ls -la "$OUT"
 
-      - name: Prepare artifact
-        run: |
-          set -e
-          mkdir -p "$GITHUB_WORKSPACE/artifact"
-          # binary name (go install places the executable with module base name)
-          BIN_NAME="wireguard-vanity-key"
-          if [ "${{ inputs.target-os }}" = "windows" ]; then
-            BIN_NAME="${BIN_NAME}.exe"
-          fi
-          cp "$GITHUB_WORKSPACE/bin/${BIN_NAME}" "$GITHUB_WORKSPACE/${{ inputs.output-name }}"
-
-      - name: Upload artifact (click to download)
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.output-name }}
