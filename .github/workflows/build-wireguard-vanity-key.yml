@@ -1,0 +1,71 @@
+name: Build wireguard-vanity-key (manual, simple)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Tag/branch/commit (use "latest" for default branch)'
+        required: false
+        default: 'latest'
+      go-version:
+        description: 'Go version (>=1.16 for go install pkg@version)'
+        required: false
+        default: '1.21'
+      target-os:
+        description: 'Target OS (windows/linux/darwin)'
+        required: false
+        default: 'windows'
+      target-arch:
+        description: 'Target arch (amd64/arm64)'
+        required: false
+        default: 'amd64'
+      output-name:
+        description: 'Артефакт/имя файла'
+        required: false
+        default: 'wireguard-vanity-key.exe'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ inputs.go-version }}
+
+      - name: Build via go install (no local go required)
+        env:
+          GOOS: ${{ inputs.target-os }}
+          GOARCH: ${{ inputs.target-arch }}
+          CGO_ENABLED: 0
+          # Установим GOBIN в workspace, чтобы бинарь оказался в известном месте
+          GOBIN: ${{ github.workspace }}/bin
+        run: |
+          set -e
+          mkdir -p "$GOBIN"
+          VER="${{ inputs.version }}"
+          if [ "$VER" = "latest" ] || [ -z "$VER" ]; then
+            # install latest from default branch
+            go install github.com/AlexanderYastrebov/wireguard-vanity-key@latest
+          else
+            go install "github.com/AlexanderYastrebov/wireguard-vanity-key@${VER}"
+          fi
+          echo "Installed to: $GOBIN"
+          ls -la "$GOBIN"
+
+      - name: Prepare artifact
+        run: |
+          set -e
+          mkdir -p "$GITHUB_WORKSPACE/artifact"
+          # binary name (go install places the executable with module base name)
+          BIN_NAME="wireguard-vanity-key"
+          if [ "${{ inputs.target-os }}" = "windows" ]; then
+            BIN_NAME="${BIN_NAME}.exe"
+          fi
+          cp "$GITHUB_WORKSPACE/bin/${BIN_NAME}" "$GITHUB_WORKSPACE/${{ inputs.output-name }}"
+
+      - name: Upload artifact (click to download)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.output-name }}
+          path: ${{ inputs.output-name }}
