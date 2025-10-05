@@ -16,7 +16,6 @@ import (
 	"math/big"
 	"os"
 	"os/signal"
-	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -26,6 +25,12 @@ import (
 	"github.com/AlexanderYastrebov/vanity25519"
 )
 
+type SearchResult struct {
+	PublicKey []byte
+	Offset    *big.Int
+	Found     bool
+}
+
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "add" {
 		cmdAdd(os.Args[2:])
@@ -34,16 +39,18 @@ func main() {
 
 	start := time.Now()
 	config := struct {
-		prefix  string
-		timeout time.Duration
-		public  string
-		output  string
+		prefix     string
+		timeout    time.Duration
+		public     string
+		output     string
+		keysAmount uint64
 	}{}
 
 	flag.StringVar(&config.prefix, "prefix", "AY/", "prefix of base64-encoded public key")
 	flag.DurationVar(&config.timeout, "timeout", 0, "stop after specified timeout")
 	flag.StringVar(&config.public, "public", "", "start from specified public key")
 	flag.StringVar(&config.output, "output", "", "use \"offset\" to print offset only")
+	flag.Uint64Var(&config.keysAmount, "keys", 1, "amount of keys that will be returned. 0 means infinite")
 	flag.Parse()
 
 	var startKey *ecdh.PrivateKey
@@ -73,29 +80,16 @@ func main() {
 
 	test := vanity25519.HasPrefixBits(decodeBase64PrefixBits(config.prefix))
 
-	vanityPublicKey, offset, attempts, ok := searchParallel(ctx, runtime.GOMAXPROCS(0), startPublicKey, test)
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigs
+		cancel()
+	}()
 
-	private := "-"
-	public := config.prefix + "..."
-	if ok {
-		public = base64.StdEncoding.EncodeToString(vanityPublicKey)
-		if startKey != nil {
-			vanityPrivateKey, err := vanity25519.Add(startKey.Bytes(), offset)
-			if err != nil {
-				panic(err)
-			}
-			private = base64.StdEncoding.EncodeToString(vanityPrivateKey)
-		}
-	}
-
-	if config.output == "offset" {
-		fmt.Println(offset.String())
-	} else {
-		duration := time.Since(start)
-
-		fmt.Printf("%-44s %-44s %-10s %-10s %s\n", "private", "public", "attempts", "duration", "attempts/s")
-		fmt.Printf("%-44s %-44s %-10d %-10s %.0f\n", private, public, attempts, duration.Round(time.Second), float64(attempts)/duration.Seconds())
-	}
+	var totalAttempts atomic.Uint64
+	results := searchParallel(ctx, 1, startPublicKey, test, &totalAttempts, config.keysAmount)
+	ok := printParallel(results, startKey, config.prefix, start, &totalAttempts)
 
 	if !ok {
 		os.Exit(1)
@@ -137,34 +131,70 @@ func cmdAdd(args []string) {
 	fmt.Println(base64.StdEncoding.EncodeToString(vanityPrivateKey))
 }
 
-func searchParallel(ctx context.Context, workers int, startPublicKey []byte, test func([]byte) bool) ([]byte, *big.Int, uint64, bool) {
-	type result struct {
-		publicKey []byte
-		offset    *big.Int
-	}
-	var found atomic.Pointer[result]
-	var totalAttempts atomic.Uint64
+func searchParallel(ctx context.Context, workers int, startPublicKey []byte, test func([]byte) bool, totalAttempts *atomic.Uint64, keysAmount uint64) <-chan SearchResult {
+	results := make(chan SearchResult, workers)
 
-	gtx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	go func() {
+		defer close(results)
 
-	var wg sync.WaitGroup
-	for range workers {
-		wg.Go(func() {
-			attempts := vanity25519.Search(gtx, startPublicKey, randBigInt(), 4096, test, func(publicKey []byte, offset *big.Int) {
-				if found.CompareAndSwap(nil, &result{publicKey, offset}) {
-					cancel()
-				}
+		var foundCount atomic.Uint64
+		var wg sync.WaitGroup
+
+		gtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		for range workers {
+			wg.Go(func() {
+				vanity25519.Search(gtx, startPublicKey, randBigInt(), 4096, test, func(publicKey []byte, offset *big.Int) {
+					r := SearchResult{
+						PublicKey: append([]byte(nil), publicKey...),
+						Offset:    new(big.Int).Set(offset),
+						Found:     true,
+					}
+					select {
+					case results <- r:
+					case <-gtx.Done():
+						return
+					}
+
+					if foundCount.Add(1) >= uint64(keysAmount) && keysAmount != 0 {
+						cancel()
+					}
+				})
 			})
-			totalAttempts.Add(attempts)
-		})
-	}
-	wg.Wait()
+		}
+		wg.Wait()
+	}()
+	return results
+}
 
-	if r := found.Load(); r != nil {
-		return r.publicKey, r.offset, totalAttempts.Load(), true
+func printParallel(results <-chan SearchResult, startKey *ecdh.PrivateKey, prefix string, start time.Time, totalAttempts *atomic.Uint64) bool {
+	var anyFound bool
+	fmt.Printf("%-44s %-44s %-10s %-10s %s\n", "private", "public", "attempts", "duration", "attempts/s")
+
+	for r := range results {
+		anyFound = true
+		public := base64.StdEncoding.EncodeToString(r.PublicKey)
+		private := "-"
+		if startKey != nil {
+			if vanityPrivateKey, err := vanity25519.Add(startKey.Bytes(), r.Offset); err == nil {
+				private = base64.StdEncoding.EncodeToString(vanityPrivateKey)
+			}
+		}
+		attempts := totalAttempts.Load()
+
+		elapsed := time.Since(start)
+		fmt.Printf("%-44s %-44s %-10d %-10s %.0f\n",
+			private,
+			public,
+			attempts,
+			elapsed.Round(time.Second),
+			float64(attempts)/elapsed.Seconds(),
+		)
 	}
-	return nil, big.NewInt(0), totalAttempts.Load(), false
+
+	fmt.Printf("\nCompleted in %s\n", time.Since(start).Round(time.Second))
+	return anyFound
 }
 
 // decodeBase64PrefixBits returns decoded prefix and number of decoded bits.
