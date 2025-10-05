@@ -38,12 +38,14 @@ func main() {
 		timeout time.Duration
 		public  string
 		output  string
+		ignoreCase  bool
 	}{}
 
 	flag.StringVar(&config.prefix, "prefix", "AY/", "prefix of base64-encoded public key")
 	flag.DurationVar(&config.timeout, "timeout", 0, "stop after specified timeout")
 	flag.StringVar(&config.public, "public", "", "start from specified public key")
 	flag.StringVar(&config.output, "output", "", "use \"offset\" to print offset only")
+	flag.BoolVar(&config.ignoreCase, "ignore-case", false, "enable case-insensitive search")
 	flag.Parse()
 
 	var startKey *ecdh.PrivateKey
@@ -71,7 +73,26 @@ func main() {
 		defer cancel()
 	}
 
-	test := vanity25519.HasPrefixBits(decodeBase64PrefixBits(config.prefix))
+	var test func([]byte) bool
+	if config.ignoreCase {
+	    prefixUpper := []byte(strings.ToUpper(config.prefix))
+	    test = func(pub []byte) bool {
+	        buf := make([]byte, base64.StdEncoding.EncodedLen(len(pub)))
+	        base64.StdEncoding.Encode(buf, pub)
+	        for i := 0; i < len(prefixUpper) && i < len(buf); i++ {
+	            a := buf[i]
+	            if a >= 'a' && a <= 'z' {
+	                a -= 'a' - 'A'
+	            }
+	            if a != prefixUpper[i] {
+	                return false
+	            }
+	        }
+	        return len(buf) >= len(prefixUpper)
+	    }
+	} else {
+	    test = vanity25519.HasPrefixBits(decodeBase64PrefixBits(config.prefix))
+	}
 
 	vanityPublicKey, offset, attempts, ok := searchParallel(ctx, runtime.GOMAXPROCS(0), startPublicKey, test)
 
