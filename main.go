@@ -16,6 +16,7 @@ import (
 	"math/big"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -109,7 +110,7 @@ func main() {
 	}()
 
 	var totalAttempts atomic.Uint64
-	results := searchParallel(ctx, 1, startPublicKey, test, &totalAttempts, config.keysAmount)
+	results := searchParallel(ctx, runtime.GOMAXPROCS(0), startPublicKey, test, &totalAttempts, config.keysAmount)
 	ok := printParallel(results, startKey, config.prefix, start, &totalAttempts)
 
 	if !ok {
